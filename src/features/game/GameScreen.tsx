@@ -1,223 +1,187 @@
-import { useMemo, useState } from "react";
-import { cardLabel, isStone, type PlayingCard } from "@/engine/cards/Card";
-import { evaluateHand } from "@/engine/poker/HandEvaluator";
-import { getHandValues } from "@/engine/poker/HandLevels";
-import { HAND_BASE } from "@/engine/poker/HandRank";
-import type { GameEvent } from "@/engine/core/GameEvent";
-import { PLANETS } from "@/content/planets/planets";
+import clsx from "clsx";
+import { AnimatePresence, motion, useAnimate } from "motion/react";
+import { useEffect, useState } from "react";
+import { allCards } from "@/engine/deck/Deck";
+import { BOSS_REGISTRY } from "@/content/blinds/bosses";
+import { ShaderBackground, type ShaderPalette } from "@/ui/fx/ShaderBackground";
+import { CardBack } from "@/ui/components/PlayingCardView";
+import { fmt } from "@/ui/format";
+import { MainMenu, randomSeed } from "../menu/MainMenu";
+import { BlindSelect } from "../blind/BlindSelect";
+import { Shop } from "../shop/Shop";
+import { Hud } from "./Hud";
+import { ConsumableRow, JokerRow } from "./JokerRow";
+import { ActionBar, HandArea } from "./HandArea";
+import { PlayArea } from "./PlayArea";
+import { CashOut } from "./CashOut";
+import { DeckModal, OptionsModal, RunInfoModal } from "./Modals";
 import { useGameStore } from "./gameStore";
 
-function randomSeed(): string {
-  // UI-side only: picking a seed is not game logic.
-  return Math.random().toString(36).slice(2, 10).toUpperCase();
+function hsl(h: number, s: number, l: number): string {
+  // HSL → hex for the shader uniforms.
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to = (x: number) => Math.round(x * 255).toString(16).padStart(2, "0");
+  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
 }
 
-function CardView({ card, selected, onClick }: { card: PlayingCard; selected: boolean; onClick: () => void }) {
-  const red = card.suit === "HEARTS" || card.suit === "DIAMONDS";
+const PALETTE_DEFAULT: ShaderPalette = { a: "#1d0f2e", b: "#0f3a3c", c: "#6b2f6f" };
+const PALETTE_SHOP: ShaderPalette = { a: "#14231a", b: "#1f4a3a", c: "#b08a2e" };
+const PALETTE_LOSE: ShaderPalette = { a: "#1a0608", b: "#3d0c14", c: "#7a1e1e" };
+const PALETTE_WIN: ShaderPalette = { a: "#2a1a05", b: "#5c3b0a", c: "#e9b949" };
+
+function DeckPile({ onOpen }: { onOpen: () => void }) {
+  const view = useGameStore((s) => s.view);
   return (
-    <button
-      type="button"
-      className={`card ${red ? "red" : "black"} ${selected ? "selected" : ""} ${isStone(card) ? "stone" : ""}`}
-      onClick={onClick}
-    >
-      <span className="card-corner">{cardLabel(card)}</span>
-      <span className="card-center">{cardLabel(card).slice(-1)}</span>
+    <button type="button" className="deck-pile" onClick={onOpen} aria-label="View deck">
+      <CardBack />
+      <span className="deck-pile-count">
+        {view.deck.drawPile.length}/{allCards(view.deck).length}
+      </span>
     </button>
   );
 }
 
-function describeEvent(e: GameEvent): string {
-  switch (e.type) {
-    case "RUN_STARTED":
-      return `Run started · seed ${e.seed}`;
-    case "ROUND_STARTED":
-      return `Ante ${e.ante} · ${e.blindType} blind · target ${e.targetScore}`;
-    case "CARDS_DRAWN":
-      return `Drew ${e.cardIds.length}`;
-    case "CARDS_DISCARDED":
-      return `Discarded ${e.cardIds.length}`;
-    case "HAND_SORTED":
-      return `Sorted by ${e.by.toLowerCase()}`;
-    case "HAND_PLAYED":
-      return `Played ${e.cardIds.length} card(s)`;
-    case "HAND_EVALUATED":
-      return `${HAND_BASE[e.handType].name} lvl.${e.level} → ${e.chips} × ${e.mult}`;
-    case "CARD_SCORED":
-      return `  +${e.chips} chips`;
-    case "SCORE_FINALIZED":
-      return `= ${e.chips} × ${e.mult} = ${e.score} (round ${e.roundScore})`;
-    case "HAND_LEVELED_UP":
-      return `${HAND_BASE[e.handType].name} → lvl.${e.level}`;
-    case "ROUND_WON":
-      return `Blind defeated! +$${e.reward}`;
-    case "GAME_OVER":
-      return `Game over (${e.score}/${e.targetScore})`;
-    case "VICTORY":
-      return "Victory!";
-  }
+function EndScreen() {
+  const view = useGameStore((s) => s.view);
+  const dispatch = useGameStore((s) => s.dispatch);
+  const win = view.status === "VICTORY";
+  return (
+    <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className={clsx("end-card", win ? "win" : "lose")} initial={{ scale: 0.6, rotate: -4 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 200, damping: 14 }}>
+        <h2>{win ? "You won the run" : "Game over"}</h2>
+        <dl className="end-stats">
+          <div>
+            <dt>Best hand</dt>
+            <dd>{fmt(view.run.bestHandScore)}</dd>
+          </div>
+          <div>
+            <dt>Reached</dt>
+            <dd>
+              Ante {view.run.ante} · Round {view.run.round}
+            </dd>
+          </div>
+          <div>
+            <dt>Hands played</dt>
+            <dd>{view.run.handsPlayedTotal}</dd>
+          </div>
+          {!win && (
+            <div>
+              <dt>Last blind</dt>
+              <dd>
+                {fmt(view.round.currentScore)} / {fmt(view.round.targetScore)}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Seed</dt>
+            <dd className="seed">{view.run.seed}</dd>
+          </div>
+        </dl>
+        <div className="end-actions">
+          <button type="button" className="btn btn-play" onClick={() => dispatch({ type: "START_RUN", seed: randomSeed() })} autoFocus>
+            New run
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => dispatch({ type: "START_RUN", seed: view.run.seed })}>
+            Retry seed
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 export function GameScreen() {
-  const { game, selectedCardIds, eventLog, error, dispatch, toggleCard, exportReplay } = useGameStore();
-  const [seed, setSeed] = useState(randomSeed);
+  const view = useGameStore((s) => s.view);
+  const seq = useGameStore((s) => s.seq);
+  const shake = useGameStore((s) => s.shake);
+  const settings = useGameStore((s) => s.settings);
+  const error = useGameStore((s) => s.error);
+  const [modal, setModal] = useState<null | "info" | "deck" | "options">(null);
+  const [scope, animate] = useAnimate<HTMLDivElement>();
 
-  const hand = game.deck.hand;
-  // Keep played order = left-to-right order in hand.
-  const selectedInOrder = hand.filter((c) => selectedCardIds.includes(c.id));
+  useEffect(() => {
+    if (shake && scope.current && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      void animate(scope.current, { x: [0, -7, 6, -4, 3, 0], y: [0, 4, -3, 2, 0] }, { duration: 0.35 });
+    }
+  }, [shake, animate, scope]);
 
-  const preview = useMemo(() => {
-    if (selectedInOrder.length === 0) return null;
-    const result = evaluateHand(selectedInOrder, game.rules);
-    return { result, ...getHandValues(game.handLevels, result.handType), level: game.handLevels[result.handType].level };
-  }, [selectedInOrder, game.rules, game.handLevels]);
-
-  if (game.status === "MENU") {
-    return (
-      <div className="menu">
-        <h1>BALATRO FAKE</h1>
-        <p className="muted">Phase 1–2 · Engine prototype</p>
-        <label>
-          Seed <input value={seed} onChange={(e) => setSeed(e.target.value.toUpperCase())} />
-        </label>
-        <button className="btn play" onClick={() => dispatch({ type: "START_RUN", seed })}>
-          New Run
-        </button>
-      </div>
-    );
-  }
-
-  const { round, player, run } = game;
-  const ids = selectedInOrder.map((c) => c.id);
+  const boss = view.round.bossId ? BOSS_REGISTRY[view.round.bossId] : undefined;
+  const palette =
+    view.status === "GAME_OVER"
+      ? PALETTE_LOSE
+      : view.status === "VICTORY"
+        ? PALETTE_WIN
+        : view.status === "SHOP"
+          ? PALETTE_SHOP
+          : boss && view.status === "PLAYING"
+            ? { a: hsl(boss.hue, 45, 8), b: hsl(boss.hue, 50, 20), c: hsl((boss.hue + 40) % 360, 55, 38) }
+            : PALETTE_DEFAULT;
+  const intensity = seq ? (seq.onFire ? 1 : 0.55) : 0;
 
   return (
-    <div className="layout">
-      <aside className="hud">
-        <div className="blind-box">
-          <div className="muted">
-            Ante {run.ante}/{run.winningAnte} · Round {run.round}
-          </div>
-          <div className="blind-name">{round.blindType} BLIND</div>
-          <div className="muted">Score at least</div>
-          <div className="target">{round.targetScore.toLocaleString()}</div>
-        </div>
-        <div className="score-box">
-          <div className="muted">Round score</div>
-          <div className="score">{round.currentScore.toLocaleString()}</div>
-        </div>
-        <div className="hand-preview">
-          <div className="hand-name">
-            {preview ? `${HAND_BASE[preview.result.handType].name} lvl.${preview.level}` : " "}
-          </div>
-          <div className="chips-mult">
-            <span className="chips">{preview ? preview.chips : 0}</span>
-            <span className="x">×</span>
-            <span className="mult">{preview ? preview.mult : 0}</span>
-          </div>
-        </div>
-        <div className="stats">
-          <div>
-            <span className="muted">Hands</span> <b className="blue">{player.handsRemaining}</b>
-          </div>
-          <div>
-            <span className="muted">Discards</span> <b className="red-text">{player.discardsRemaining}</b>
-          </div>
-          <div>
-            <span className="muted">Money</span> <b className="gold">${player.money}</b>
-          </div>
-          <div>
-            <span className="muted">Deck</span> <b>{game.deck.drawPile.length}/52</b>
-          </div>
-        </div>
-        <div className="muted small">Seed {run.seed}</div>
-      </aside>
-
-      <main className="table">
-        <div className="joker-row">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="slot">
-              Joker
-            </div>
-          ))}
-        </div>
-
-        <div className="hand">
-          {hand.map((card) => (
-            <CardView
-              key={card.id}
-              card={card}
-              selected={selectedCardIds.includes(card.id)}
-              onClick={() => toggleCard(card.id)}
-            />
-          ))}
-        </div>
-
-        <div className="actions">
-          <button
-            className="btn play"
-            disabled={game.status !== "PLAYING" || ids.length === 0}
-            onClick={() => dispatch({ type: "PLAY_HAND", cardIds: ids })}
-          >
-            Play Hand
-          </button>
-          <div className="sort">
-            <button className="btn small" onClick={() => dispatch({ type: "SORT_HAND", by: "RANK" })}>
-              Rank
-            </button>
-            <button className="btn small" onClick={() => dispatch({ type: "SORT_HAND", by: "SUIT" })}>
-              Suit
-            </button>
-          </div>
-          <button
-            className="btn discard"
-            disabled={game.status !== "PLAYING" || ids.length === 0 || player.discardsRemaining === 0}
-            onClick={() => dispatch({ type: "DISCARD", cardIds: ids })}
-          >
-            Discard
-          </button>
-        </div>
-        {error && <div className="error">{error}</div>}
-
-        {game.status === "ROUND_WON" && (
-          <div className="overlay">
-            <h2>Blind defeated</h2>
-            <p className="muted">Shop comes in Phase 4. For now: level up a hand (debug) or continue.</p>
-            <div className="planets">
-              {PLANETS.map((p) => (
-                <button key={p.id} className="btn small" onClick={() => dispatch({ type: "USE_PLANET", planetId: p.id })}>
-                  {p.name} · {HAND_BASE[p.hand].name} (lvl.{game.handLevels[p.hand].level})
-                </button>
-              ))}
-            </div>
-            <button className="btn play" onClick={() => dispatch({ type: "NEXT_ROUND" })}>
-              Next Blind
-            </button>
+    <div className={clsx("app", settings.crt && "crt-on")}>
+      <ShaderBackground palette={palette} intensity={intensity} />
+      <div className="stage" ref={scope}>
+        {view.status === "MENU" ? (
+          <MainMenu onOptions={() => setModal("options")} />
+        ) : (
+          <div className="layout">
+            <Hud onRunInfo={() => setModal("info")} onOptions={() => setModal("options")} />
+            <main className="board">
+              <div className="top-row">
+                <JokerRow />
+                <ConsumableRow />
+              </div>
+              <div className="center">
+                <AnimatePresence mode="wait">
+                  {view.status === "BLIND_SELECT" && (
+                    <motion.div key="blind" className="center-fill" exit={{ y: 200, opacity: 0 }}>
+                      <BlindSelect />
+                    </motion.div>
+                  )}
+                  {view.status === "SHOP" && (
+                    <motion.div key="shop" className="center-fill" exit={{ y: 200, opacity: 0 }}>
+                      <Shop />
+                    </motion.div>
+                  )}
+                  {view.status === "ROUND_WON" && (
+                    <motion.div key="cash" className="center-fill" exit={{ y: 200, opacity: 0 }}>
+                      <CashOut />
+                    </motion.div>
+                  )}
+                  {(view.status === "PLAYING" || view.status === "GAME_OVER") && (
+                    <motion.div key="play" className="center-fill play-col" exit={{ opacity: 0 }}>
+                      <PlayArea />
+                      <HandArea />
+                      <ActionBar />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <DeckPile onOpen={() => setModal("deck")} />
+            </main>
           </div>
         )}
+      </div>
 
-        {(game.status === "GAME_OVER" || game.status === "VICTORY") && (
-          <div className="overlay">
-            <h2>{game.status === "VICTORY" ? "You win!" : "Game Over"}</h2>
-            <button className="btn play" onClick={() => dispatch({ type: "START_RUN", seed: randomSeed() })}>
-              New Run
-            </button>
-            <button className="btn small" onClick={() => navigator.clipboard?.writeText(exportReplay())}>
-              Copy replay JSON
-            </button>
-          </div>
+      <AnimatePresence>{(view.status === "GAME_OVER" || view.status === "VICTORY") && !seq && <EndScreen key="end" />}</AnimatePresence>
+      <AnimatePresence>
+        {modal === "info" && <RunInfoModal key="i" onClose={() => setModal(null)} />}
+        {modal === "deck" && <DeckModal key="d" onClose={() => setModal(null)} />}
+        {modal === "options" && <OptionsModal key="o" onClose={() => setModal(null)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {error && (
+          <motion.div key="err" className="toast" role="alert" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}>
+            {error}
+          </motion.div>
         )}
-      </main>
-
-      <aside className="log">
-        <div className="muted">Event log</div>
-        <ol>
-          {eventLog
-            .filter((e) => e.type !== "CARDS_DRAWN")
-            .slice(-40)
-            .map((e, i) => (
-              <li key={i}>{describeEvent(e)}</li>
-            ))}
-        </ol>
-      </aside>
+      </AnimatePresence>
+      {settings.crt && <div className="crt" aria-hidden />}
     </div>
   );
 }

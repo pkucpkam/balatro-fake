@@ -5,12 +5,19 @@
  */
 export type GameAction =
   | { type: "START_RUN"; seed: string }
+  | { type: "SELECT_BLIND" }
   | { type: "PLAY_HAND"; cardIds: string[] }
   | { type: "DISCARD"; cardIds: string[] }
   | { type: "SORT_HAND"; by: "RANK" | "SUIT" }
-  /** Temporary until consumables (Phase 6): directly apply a planet. */
-  | { type: "USE_PLANET"; planetId: string }
-  /** Temporary until Shop/Blind select (Phase 4): advance to next blind. */
-  | { type: "NEXT_ROUND" };
+  /** Reorder hand cards (drag & drop). Must be a permutation of the hand. */
+  | { type: "REORDER_HAND"; cardIds: string[] }
+  | { type: "USE_CONSUMABLE"; consumableId: string; targetCardIds?: string[] }
+  | { type: "SELL_CONSUMABLE"; consumableId: string }
+  | { type: "SELL_JOKER"; jokerId: string }
+  | { type: "MOVE_JOKER"; jokerId: string; toIndex: number }
+  | { type: "CASH_OUT" }
+  | { type: "BUY"; itemId: string }
+  | { type: "REROLL" }
+  | { type: "LEAVE_SHOP" };
 
 export type GameActionType = GameAction["type"];

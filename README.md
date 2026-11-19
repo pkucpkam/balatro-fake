@@ -13,20 +13,29 @@ npm run typecheck
 npm run build
 ```
 
-## Trạng thái: Phase 1 + Phase 2 xong
+## Trạng thái
 
 | Phase | Nội dung | Trạng thái |
 | --- | --- | --- |
 | 1. Foundation | Vite/React/TS, Card model, Deck, Seeded RNG, replay | ✅ |
 | 2. Poker Engine | 12 Poker Hands, Scoring Card Resolver, Hand Level, Planet | ✅ |
-| 3. Scoring & Effects | Scoring Pipeline, Effect/Trigger, Joker, Retrigger | ⏳ tiếp theo |
-| 4. Gameplay Loop | Blind Manager, Boss, Shop, Economy, Tag | — |
-| 5. Visual & Animation | Framer Motion, GSAP, shaders, audio | — |
-| 6. Content Expansion | Tarot, Spectral, Voucher, Deck, Pack | — |
-| 7. Polish | Save/Load IndexedDB, Settings, profiling | — |
+| 3. Scoring & Effects | `ScoringPipeline`, ~55 Joker, retrigger, Enhancement/Edition/Seal | ✅ |
+| 4. Gameplay Loop | Blind select, 15 Boss, Cash out + interest, Shop (reroll, mua/bán) | ✅ |
+| 5. Visual & Animation | `motion`, shader nền WebGL, âm thanh WebAudio, confetti, CRT | ✅ (chưa kiểm tra kỹ trên trình duyệt) |
+| 6. Content Expansion | 21 Tarot ✅ · Spectral, Voucher, Booster Pack, Skip/Tag | ⏳ |
+| 7. Polish | Auto-save (localStorage, replay action log), Options | 🟡 |
 
-UI hiện tại chỉ là màn debug để chơi thử engine (chọn bài, Play/Discard, Sort, event log).
-Sau khi thắng blind có nút dùng Planet (debug) và Next Blind; Shop sẽ thay thế ở Phase 4.
+Luồng: `BLIND_SELECT → PLAYING → ROUND_WON (cash out) → SHOP → BLIND_SELECT …`, thắng Boss Ante 8 = VICTORY.
+
+### UI / hiệu ứng
+
+- Engine tính xong ngay; store giữ `game` (sự thật) và `view` (đang hiển thị). Khi PLAY_HAND, store phát lại từng `SCORE_STEP`
+  (popup +Chips/+Mult/XMult trên đúng lá bài/Joker, âm cao dần, rung màn hình khi XMult, lửa khi vượt mục tiêu) rồi mới gán `view = game`.
+- Kéo thả sắp xếp bài trên tay và Joker (`Reorder` của motion), click để chọn. Phím: `Enter` đánh, `D` bỏ, `Esc` bỏ chọn.
+- Nền: shader "sơn xoáy" tự viết (`ui/fx/ShaderBackground.tsx`), đổi màu theo Boss/Shop/thua/thắng, tăng tốc khi chấm điểm.
+- Âm thanh tổng hợp bằng WebAudio (`ui/audio/sfx.ts`), không có file asset.
+- Font: Pixelify Sans + VT323 (`@fontsource`). Package mới: `motion`, `canvas-confetti`, `clsx`.
+- Tôn trọng `prefers-reduced-motion`.
 
 ## Kiến trúc
 
@@ -39,8 +48,12 @@ src/
 │   ├── poker/              # HandRank, HandEvaluator, HandLevels, HandScorer
 │   ├── blind/              # BlindTable (tạm, Phase 4 thay bằng Blind Manager)
 │   └── rng/                # SeededRng (cyrb128 + sfc32), state serialisable
-├── content/planets/        # Dữ liệu Planet (registry)
-├── features/game/          # gameStore (Zustand) + GameScreen
+│   ├── scoring/            # ScoringPipeline (thứ tự kích hoạt kiểu Balatro)
+│   ├── effects/            # JokerDefinition, Effect, TarotApi
+│   └── shop/               # sinh item shop, giá, độ hiếm, edition
+├── content/                # planets, jokers, tarots, blinds/bosses (registry dữ liệu)
+├── features/               # game (store, HUD, hand, play area), blind, shop, menu
+├── ui/                     # components (card, joker, consumable, popup), fx, audio
 └── styles/
 tests/                      # rng, deck, poker evaluator, scoring, engine/replay/simulation
 ```
@@ -69,10 +82,8 @@ tests/                      # rng, deck, poker evaluator, scoring, engine/replay
 - Four of a Kind có được tính là "contains Two Pair" hay không (hiện tại: không — cần hai rank khác nhau).
 - Four Fingers: Straight Flush hiện được công nhận khi tồn tại cả straight 4 lá và flush 4 lá (lấy hợp các lá).
 
-## Bước tiếp theo (Phase 3)
+## Bước tiếp theo
 
-1. `engine/scoring/ScoringPipeline.ts` khởi đầu từ `scoreBasic` breakdown.
-2. `engine/effects/`: `TriggerType`, `EffectResult` (`ADD_CHIPS`, `ADD_MULT`, `X_MULT`, `RETRIGGER`…), `EffectEngine` duyệt Joker theo thứ tự.
-3. `JokerInstance` trong `PlayerState`, `content/jokers/` với 15 Joker đầu tiên.
-4. Enhancement (Bonus, Mult, Glass, Steel, Lucky, Gold), Edition, Red Seal retrigger.
-5. Test combo Joker + thứ tự kích hoạt.
+1. Chạy thử trên trình duyệt, chỉnh thời gian animation / kích thước card cho màn hình nhỏ.
+2. Booster Pack + Spectral, Voucher, Skip Blind + Tag.
+3. Code-split bundle (vite cảnh báo >500 kB), lưu bằng IndexedDB nếu cần.

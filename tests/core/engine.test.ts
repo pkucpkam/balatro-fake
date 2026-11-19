@@ -4,24 +4,27 @@ import type { GameAction } from "@/engine/core/GameAction";
 import type { GameState } from "@/engine/core/GameState";
 import { allCards } from "@/engine/deck/Deck";
 import { SeededRng } from "@/engine/rng/SeededRng";
-import { PLANETS } from "@/content/planets/planets";
+import { TAROT_REGISTRY } from "@/content/tarots/tarots";
 
 function started(seed = "TEST") {
   const engine = new GameEngine();
   engine.dispatch({ type: "START_RUN", seed });
+  engine.dispatch({ type: "SELECT_BLIND" });
   return engine;
 }
 
 function assertInvariants(state: GameState) {
   const everything = allCards(state.deck);
-  expect(everything).toHaveLength(52);
-  expect(new Set(everything.map((c) => c.id)).size).toBe(52);
+  expect(everything.length).toBeGreaterThan(0);
+  expect(new Set(everything.map((c) => c.id)).size).toBe(everything.length);
+  expect(state.jokers.length).toBeLessThanOrEqual(state.player.jokerSlots);
+  expect(state.consumables.length).toBeLessThanOrEqual(state.player.consumableSlots);
   expect(state.player.handsRemaining).toBeGreaterThanOrEqual(0);
   expect(state.player.discardsRemaining).toBeGreaterThanOrEqual(0);
   expect(state.player.money).toBeGreaterThanOrEqual(0);
   expect(Number.isFinite(state.round.currentScore)).toBe(true);
   if (state.status === "PLAYING") {
-    expect(state.deck.hand.length).toBeLessThanOrEqual(state.player.handSize);
+    expect(state.deck.hand.length).toBeLessThanOrEqual(state.round.handSize);
   }
 }
 
@@ -67,7 +70,7 @@ describe("GameEngine – run lifecycle", () => {
     expect(() => engine.dispatch({ type: "PLAY_HAND", cardIds: ["ghost"] })).toThrow(InvalidActionError);
     const six = engine.state.deck.hand.slice(0, 6).map((c) => c.id);
     expect(() => engine.dispatch({ type: "DISCARD", cardIds: six })).toThrow(InvalidActionError);
-    expect(() => engine.dispatch({ type: "NEXT_ROUND" })).toThrow(InvalidActionError);
+    expect(() => engine.dispatch({ type: "CASH_OUT" })).toThrow(InvalidActionError);
     expect(engine.state).toBe(before);
   });
 
@@ -98,11 +101,13 @@ describe("GameEngine – run lifecycle", () => {
     expect(JSON.stringify(s0)).toBe(snapshot);
   });
 
-  it("USE_PLANET levels up the matching hand", () => {
-    const engine = started();
-    const events = engine.dispatch({ type: "USE_PLANET", planetId: "mercury" });
+  it("using a Planet consumable levels up the matching hand", () => {
+    const base = started().state;
+    const engine = new GameEngine({ ...base, consumables: [{ id: "c-x", kind: "PLANET", defId: "mercury" }] });
+    const events = engine.dispatch({ type: "USE_CONSUMABLE", consumableId: "c-x" });
     expect(engine.state.handLevels.PAIR.level).toBe(2);
-    expect(events).toEqual([{ type: "HAND_LEVELED_UP", handType: "PAIR", level: 2 }]);
+    expect(engine.state.consumables).toHaveLength(0);
+    expect(events[0]).toEqual({ type: "HAND_LEVELED_UP", handType: "PAIR", level: 2 });
   });
 
   it("SORT_HAND by rank orders high to low", () => {
@@ -117,10 +122,32 @@ describe("GameEngine – run lifecycle", () => {
 describe("Determinism & replay", () => {
   /** Random-but-seeded bot: produces a legal action for the current state. */
   function botAction(state: GameState, bot: SeededRng): GameAction | null {
-    if (state.status === "ROUND_WON") {
-      return bot.chance(0.3) ? { type: "USE_PLANET", planetId: bot.pick(PLANETS).id } : { type: "NEXT_ROUND" };
+    if (state.status === "BLIND_SELECT") return { type: "SELECT_BLIND" };
+    if (state.status === "ROUND_WON") return { type: "CASH_OUT" };
+    if (state.status === "SHOP") {
+      const shop = state.shop!;
+      const affordable = shop.items.filter(
+        (i) =>
+          i.cost <= state.player.money &&
+          (i.kind === "JOKER"
+            ? state.jokers.length < state.player.jokerSlots
+            : state.consumables.length < state.player.consumableSlots),
+      );
+      if (affordable.length > 0 && bot.chance(0.7)) return { type: "BUY", itemId: bot.pick(affordable).id };
+      if (state.player.money >= shop.rerollCost && bot.chance(0.1)) return { type: "REROLL" };
+      if (state.jokers.length > 0 && bot.chance(0.05)) return { type: "SELL_JOKER", jokerId: state.jokers[0]!.id };
+      return { type: "LEAVE_SHOP" };
     }
     if (state.status !== "PLAYING") return null;
+    const usable = state.consumables[0];
+    if (usable && bot.chance(0.3)) {
+      const t = usable.kind === "TAROT" ? TAROT_REGISTRY[usable.defId]! : null;
+      const n = t ? t.maxTargets : 0;
+      const targets = bot.shuffle(state.deck.hand).slice(0, Math.max(t?.minTargets ?? 0, Math.min(n, state.deck.hand.length)));
+      if (!t || targets.length >= t.minTargets) {
+        return { type: "USE_CONSUMABLE", consumableId: usable.id, targetCardIds: targets.map((c) => c.id) };
+      }
+    }
     const hand = bot.shuffle(state.deck.hand);
     const n = bot.int(1, Math.min(5, hand.length));
     const cardIds = hand.slice(0, n).map((c) => c.id);
@@ -129,7 +156,7 @@ describe("Determinism & replay", () => {
     return { type: "PLAY_HAND", cardIds };
   }
 
-  function simulate(seed: string, maxSteps = 500) {
+  function simulate(seed: string, maxSteps = 1500) {
     const engine = new GameEngine();
     engine.dispatch({ type: "START_RUN", seed });
     const bot = SeededRng.fromSeed(`bot:${seed}`);
@@ -166,12 +193,16 @@ describe("Determinism & replay", () => {
     let finished = 0;
     for (let seed = 1; seed <= 300; seed++) {
       const engine = simulate(String(seed));
-      if (engine.state.status !== "PLAYING") finished++;
+      if (engine.state.status === "GAME_OVER" || engine.state.status === "VICTORY") finished++;
     }
     expect(finished).toBe(300);
   });
 
   it("menu state is a valid starting point", () => {
     expect(createMenuState().status).toBe("MENU");
+    const e = new GameEngine();
+    e.dispatch({ type: "START_RUN", seed: "X" });
+    expect(e.state.status).toBe("BLIND_SELECT");
+    expect(e.state.run.bossId).not.toBe("");
   });
 });

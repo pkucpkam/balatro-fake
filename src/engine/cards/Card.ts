@@ -108,3 +108,44 @@ export function cardLabel(card: PlayingCard): string {
   if (isStone(card)) return "Stone";
   return `${card.rank}${SUIT_SYMBOL[card.suit]}`;
 }
+
+export function isFace(card: PlayingCard): boolean {
+  return hasRank(card) && FACE_RANKS.has(card.rank);
+}
+
+export function isRed(suit: Suit): boolean {
+  return suit === "HEARTS" || suit === "DIAMONDS";
+}
+
+/** Does the card count as `suit`? Wild = every suit, Stone = none, Smeared merges colours. */
+export function cardHasSuit(card: PlayingCard, suit: Suit, smeared = false): boolean {
+  if (isStone(card)) return false;
+  if (isWild(card)) return true;
+  if (card.suit === suit) return true;
+  return smeared && isRed(card.suit) === isRed(suit);
+}
+
+export const ENHANCEMENT_INFO: Record<EnhancementType, { name: string; text: string }> = {
+  BONUS: { name: "Bonus Card", text: "+30 Chips" },
+  MULT: { name: "Mult Card", text: "+4 Mult" },
+  WILD: { name: "Wild Card", text: "Counts as every suit" },
+  GLASS: { name: "Glass Card", text: "X2 Mult, 1 in 4 chance to break" },
+  STEEL: { name: "Steel Card", text: "X1.5 Mult while held in hand" },
+  STONE: { name: "Stone Card", text: "+50 Chips, no rank or suit, always scores" },
+  GOLD: { name: "Gold Card", text: "$3 if held in hand at end of round" },
+  LUCKY: { name: "Lucky Card", text: "1 in 5: +20 Mult · 1 in 15: $20" },
+};
+
+export const EDITION_INFO: Record<EditionType, { name: string; text: string }> = {
+  FOIL: { name: "Foil", text: "+50 Chips" },
+  HOLOGRAPHIC: { name: "Holographic", text: "+10 Mult" },
+  POLYCHROME: { name: "Polychrome", text: "X1.5 Mult" },
+  NEGATIVE: { name: "Negative", text: "+1 Joker slot" },
+};
+
+export const SEAL_INFO: Record<SealType, { name: string; text: string }> = {
+  GOLD: { name: "Gold Seal", text: "Earn $3 when scored" },
+  RED: { name: "Red Seal", text: "Retrigger this card 1 time" },
+  BLUE: { name: "Blue Seal", text: "Creates the Planet of the final hand if held at end of round" },
+  PURPLE: { name: "Purple Seal", text: "Creates a Tarot when discarded" },
+};
