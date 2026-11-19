@@ -1,6 +1,6 @@
 import clsx from "clsx";
-import { useEffect, useMemo } from "react";
-import { animate, motion, useMotionValue, useTransform } from "motion/react";
+import { useEffect, useMemo, useRef } from "react";
+import { animate, motion, useAnimate, useMotionValue, useTransform } from "motion/react";
 import { evaluateHand } from "@/engine/poker/HandEvaluator";
 import { getHandValues } from "@/engine/poker/HandLevels";
 import { HAND_BASE } from "@/engine/poker/HandRank";
@@ -22,14 +22,36 @@ function RollingNumber({ value, className }: { value: number; className?: string
   return <motion.span className={className}>{text}</motion.span>;
 }
 
-function ScoreBox({ kind, value }: { kind: "chips" | "mult"; value: string }) {
-  const scope = usePulse<HTMLDivElement>(`hud-${kind}`);
+/** Chips / Mult box: counts up to each new value and flashes when it grows. */
+function ScoreBox({ kind, value }: { kind: "chips" | "mult"; value: number }) {
+  const speed = useGameStore((s) => s.settings.speed);
+  const [scope, animateEl] = useAnimate<HTMLDivElement>();
+  const mv = useMotionValue(value);
+  const target = useRef(value);
+  target.current = value;
+  // While counting, show whole numbers unless the destination itself is fractional (XMult).
+  const text = useTransform(mv, (v) => {
+    const shown = Number.isInteger(target.current) ? Math.round(v) : v;
+    return kind === "mult" ? fmtMult(shown) : fmt(shown);
+  });
+  const prev = useRef(value);
+  useEffect(() => {
+    const grew = value > prev.current;
+    prev.current = value;
+    const c = animate(mv, value, { duration: grew ? 0.26 / speed : 0, ease: "easeOut" });
+    if (grew && scope.current) {
+      void animateEl(
+        scope.current,
+        { scale: [1, 1.14, 1], filter: ["brightness(1)", "brightness(1.7)", "brightness(1)"] },
+        { duration: 0.28 / speed },
+      );
+    }
+    return () => c.stop();
+  }, [value, mv, speed, animateEl, scope]);
   return (
-    <motion.div className={clsx("score-chip", kind)} ref={scope} key={kind}>
-      <motion.span key={value} initial={{ scale: 1.35 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 700, damping: 18 }}>
-        {value}
-      </motion.span>
-    </motion.div>
+    <div className={clsx("score-chip", kind)} ref={scope}>
+      <motion.span>{text}</motion.span>
+    </div>
   );
 }
 
@@ -40,6 +62,7 @@ export function Hud({ onRunInfo, onOptions }: { onRunInfo: () => void; onOptions
   const { round, player, run } = view;
   const boss = view.round.blindType === "BOSS" ? BOSS_REGISTRY[run.bossId] : undefined;
   const live = activeBoss(view);
+  const bossFx = usePulse<HTMLElement>("boss");
 
   const preview = useMemo(() => {
     if (seq || view.status !== "PLAYING") return null;
@@ -58,7 +81,7 @@ export function Hud({ onRunInfo, onOptions }: { onRunInfo: () => void; onOptions
   return (
     <aside className="hud" style={{ "--boss-hue": boss?.hue ?? 42 } as React.CSSProperties}>
       {showBlind ? (
-        <section className={clsx("hud-blind", boss && "is-boss")}>
+        <section className={clsx("hud-blind", boss && "is-boss")} ref={bossFx}>
           <div className="hud-blind-name">{blindLabel(view)}</div>
           <div className="hud-blind-body">
             <div className={clsx("blind-token", `token-${round.blindType.toLowerCase()}`)} aria-hidden>
@@ -98,9 +121,9 @@ export function Hud({ onRunInfo, onOptions }: { onRunInfo: () => void; onOptions
           )}
         </div>
         <div className="hud-calc">
-          <ScoreBox kind="chips" value={fmt(chips)} />
+          <ScoreBox kind="chips" value={chips} />
           <span className="times">×</span>
-          <ScoreBox kind="mult" value={fmtMult(mult)} />
+          <ScoreBox kind="mult" value={mult} />
         </div>
         {seq?.onFire && <div className="flames" aria-hidden />}
         <Popups target="hud" placement="bottom" />

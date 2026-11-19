@@ -1,14 +1,28 @@
 import { useEffect } from "react";
 import { useAnimate } from "motion/react";
 import { useGameStore } from "@/features/game/gameStore";
+import { FX_MOTION, glow, sparks, type FxKind } from "@/ui/fx/scoreFx";
 
-/** Bounce the element whenever the scoring sequence triggers `target`. */
-export function usePulse<T extends Element>(target: string) {
+/**
+ * Plays the trigger effect (motion + glow + sparks, styled by step kind)
+ * whenever the scoring sequence fires `target`.
+ */
+export function usePulse<T extends HTMLElement>(target: string) {
   const [scope, animate] = useAnimate<T>();
   const pulse = useGameStore((s) => (s.seq?.active === target ? s.seq.pulse : 0));
   useEffect(() => {
-    if (pulse && scope.current) {
-      void animate(scope.current, { scale: [1, 1.16, 1], rotate: [0, -4, 3, 0] }, { duration: 0.32 });
+    const el = scope.current;
+    if (!pulse || !el) return;
+    const { seq, settings } = useGameStore.getState();
+    const kind: FxKind = seq?.activeKind ?? "BASE";
+    const fx = FX_MOTION[kind];
+    // Jokers sit small in the tray: give their trigger a longer, stronger beat.
+    const isJoker = target.startsWith("joker:");
+    const duration = (fx.duration * (isJoker ? 1.35 : 1)) / settings.speed;
+    glow(el, kind, duration * 1000 + (isJoker ? 260 : 120));
+    sparks(el, kind, settings.speed);
+    if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      void animate(el, fx.keyframes, { duration, ease: "easeOut" });
     }
   }, [pulse, animate, scope]);
   return scope;

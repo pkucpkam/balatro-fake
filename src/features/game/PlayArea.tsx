@@ -13,17 +13,18 @@ export function PlayArea() {
           {seq.played.map((c, i) => {
             const scoring = seq.scoringIds.includes(c.id);
             const broken = seq.destroyed.includes(c.id);
+            const active = seq.active === `card:${c.id}`;
             return (
               <motion.div
                 key={c.id}
                 layoutId={`card-${c.id}`}
-                className="played-slot"
+                className={clsx("played-slot", active && "active")}
                 animate={
                   seq.phase === "exit"
                     ? { x: 520, y: -40, rotate: 18, opacity: 0, transition: { delay: i * 0.04, duration: 0.3 } }
                     : broken
                       ? { scale: [1, 1.2, 0], rotate: [0, -15, 40], opacity: [1, 1, 0], transition: { duration: 0.5 } }
-                      : { y: scoring && seq.phase !== "enter" ? -26 : 0, opacity: 1 }
+                      : { y: active ? -46 : scoring && seq.phase !== "enter" ? -26 : 0, opacity: 1 }
                 }
                 transition={{ type: "spring", stiffness: 320, damping: 26 }}
               >

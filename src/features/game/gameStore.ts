@@ -53,6 +53,8 @@ export interface ScoringSequence {
   score: number | null;
   /** id being triggered right now + a counter to restart its pulse. */
   active: string | null;
+  /** Kind of the step being triggered (drives the per-kind effect). */
+  activeKind: ScoreStepKind | null;
   pulse: number;
   destroyed: string[];
   onFire: boolean;
@@ -276,6 +278,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         mult: 0,
         score: null,
         active: null,
+        activeKind: null,
         pulse: 0,
         destroyed: [],
         onFire: false,
@@ -312,7 +315,8 @@ export const useGameStore = create<GameStore>((set, get) => {
             ...s.seq,
             chips,
             mult,
-            active: step.sourceId ? tgt : null,
+            active: step.sourceId || step.source === "BOSS" ? tgt : null,
+            activeKind: step.kind,
             pulse: s.seq.pulse + 1,
             onFire: prev.round.currentScore + chips * mult >= target,
             destroyed: step.kind === "DESTROY" && step.sourceId ? [...s.seq.destroyed, step.sourceId] : s.seq.destroyed,
@@ -347,13 +351,14 @@ export const useGameStore = create<GameStore>((set, get) => {
           break;
       }
       i++;
-      await wait(step.kind === "BASE" ? 120 : step.kind === "XMULT" ? 520 : 360);
+      const jokerBeat = step.source === "JOKER" ? 140 : 0;
+      await wait((step.kind === "BASE" ? 120 : step.kind === "XMULT" ? 520 : 360) + jokerBeat);
     }
 
     if (finalized?.type === "SCORE_FINALIZED") {
       sfx.total();
       set((s) => ({
-        seq: s.seq && { ...s.seq, phase: "total", score: finalized.score, active: null },
+        seq: s.seq && { ...s.seq, phase: "total", score: finalized.score, active: null, activeKind: null },
         view: { ...s.view, round: { ...s.view.round, currentScore: finalized.roundScore }, player: { ...s.view.player, money: final.player.money } },
         shake: finalized.score >= target ? s.shake + 1 : s.shake,
       }));
