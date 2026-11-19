@@ -1,0 +1,96 @@
+:root {
+  --felt: #2f5d4a;
+  --felt-dark: #1e3f32;
+  --panel: #1b2a30;
+  --panel-2: #24363d;
+  --text: #f2f2f2;
+  --muted: #9fb3b8;
+  --chips: #1e90ff;
+  --mult: #ff4d4d;
+  --gold: #f5b942;
+  --play: #1e90ff;
+  --discard: #e5484d;
+  font-family: "Trebuchet MS", system-ui, sans-serif;
+  color: var(--text);
+  background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+button { font: inherit; cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.muted { color: var(--muted); font-size: 0.85rem; }
+.small { font-size: 0.75rem; }
+.blue { color: var(--chips); }
+.red-text { color: var(--mult); }
+.gold { color: var(--gold); }
+
+.menu {
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+}
+.menu h1 { font-size: 4rem; letter-spacing: 0.2em; margin: 0; text-shadow: 0 4px 0 #0006; }
+.menu input { margin-left: 0.5rem; padding: 0.4rem; background: var(--panel); color: var(--text); border: 1px solid #fff3; border-radius: 6px; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 260px;
+  gap: 1rem;
+  padding: 1rem;
+  min-height: 100vh;
+}
+
+.hud, .log {
+  background: var(--panel); border-radius: 12px; padding: 1rem;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  box-shadow: 0 6px 0 #0005;
+}
+.blind-box, .score-box, .hand-preview, .stats { background: var(--panel-2); border-radius: 8px; padding: 0.75rem; text-align: center; }
+.blind-name { font-weight: bold; font-size: 1.2rem; margin: 0.25rem 0; }
+.target { font-size: 1.6rem; color: var(--mult); font-weight: bold; }
+.score { font-size: 2rem; font-weight: bold; }
+.hand-name { font-weight: bold; min-height: 1.4em; }
+.chips-mult { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+.chips, .mult { min-width: 70px; padding: 0.4rem; border-radius: 6px; font-size: 1.4rem; font-weight: bold; }
+.chips { background: var(--chips); }
+.mult { background: var(--mult); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; text-align: left; }
+
+.table { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 1rem; }
+.joker-row { display: flex; gap: 0.75rem; justify-content: center; }
+.slot {
+  width: 90px; height: 126px; border: 2px dashed #fff3; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; color: #fff4; font-size: 0.8rem;
+}
+
+.hand { display: flex; justify-content: center; gap: 0.4rem; flex-wrap: nowrap; padding-top: 2rem; }
+.card {
+  position: relative; width: 96px; height: 134px; border-radius: 10px; border: none;
+  background: #f7f3ea; box-shadow: 0 4px 0 #0006;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.card:hover { transform: translateY(-8px); }
+.card.selected { transform: translateY(-28px); box-shadow: 0 10px 0 #0006, 0 0 0 3px var(--gold); }
+.card.red { color: #d63031; }
+.card.black { color: #2d3436; }
+.card.stone { background: #8a8a8a; color: #333; }
+.card-corner { position: absolute; top: 6px; left: 8px; font-weight: bold; font-size: 1.1rem; }
+.card-center { font-size: 2.6rem; }
+
+.actions { display: flex; justify-content: center; align-items: center; gap: 1rem; padding-bottom: 1rem; }
+.btn { border: none; border-radius: 8px; padding: 0.8rem 1.6rem; color: white; font-weight: bold; box-shadow: 0 4px 0 #0006; }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #0006; }
+.btn.play { background: var(--play); }
+.btn.discard { background: var(--discard); }
+.btn.small { background: var(--panel-2); padding: 0.4rem 0.8rem; }
+.sort { display: flex; gap: 0.4rem; }
+.error { text-align: center; color: var(--mult); }
+
+.overlay {
+  position: absolute; inset: 15% 10%; background: #000c; border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: 1rem;
+}
+.planets { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; max-width: 640px; }
+
+.log ol { margin: 0; padding-left: 2rem; font-size: 0.78rem; line-height: 1.5; overflow-y: auto; max-height: 80vh; font-family: ui-monospace, monospace; }
