@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useGameStore } from "../game/gameStore";
+import { useAccountLabel } from "../account/AccountModal";
 
 function randomSeed(): string {
   // UI-side only: picking a seed is not game logic.
@@ -9,7 +10,8 @@ function randomSeed(): string {
 
 const TITLE = "BALATRO";
 
-export function MainMenu({ onOptions }: { onOptions: () => void }) {
+export function MainMenu({ onOptions, onAccount }: { onOptions: () => void; onAccount: () => void }) {
+  const accountLabel = useAccountLabel();
   const dispatch = useGameStore((s) => s.dispatch);
   const hasSave = useGameStore((s) => s.hasSave);
   const continueRun = useGameStore((s) => s.continueRun);
@@ -54,6 +56,11 @@ export function MainMenu({ onOptions }: { onOptions: () => void }) {
         <button type="button" className="btn btn-ghost" onClick={onOptions}>
           Options
         </button>
+        {accountLabel && (
+          <button type="button" className="btn btn-ghost" onClick={onAccount}>
+            {accountLabel === "Sign in" ? "Sign in · cloud save" : `Account · ${accountLabel}`}
+          </button>
+        )}
       </motion.div>
       <p className="menu-foot">Click cards to select · drag to reorder · Enter plays · D discards</p>
     </div>

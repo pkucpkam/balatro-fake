@@ -13,6 +13,16 @@ npm run typecheck
 npm run build
 ```
 
+## Cloud save (Firebase, gói Spark)
+
+- Copy `.env.example` → `.env.local`, điền config Web app. Thiếu config thì game chạy local-only.
+- Đăng nhập: Email/Password hoặc Google (bật trong Firebase console → Authentication). Chưa đăng nhập = chỉ lưu localStorage.
+- Đã đăng nhập: run đang chơi đồng bộ lên `users/{uid}/meta/activeRun` (2.5s sau action cuối, ngay khi ẩn tab);
+  hết run → `users/{uid}/runs/{id}` + cộng dồn `stats`. Đăng nhập trên máy khác → "Continue run" lấy bản mới hơn.
+- Rules: `firestore.rules` (mỗi người chỉ đọc/ghi dữ liệu của mình). Deploy: `firebase deploy --only firestore:rules`.
+- Test local: `firebase emulators:start --only auth,firestore` và chạy dev với `VITE_FIREBASE_EMULATOR=1`.
+- Không có Cloud Functions nên stats do client ghi, không chống gian lận → chưa làm leaderboard công khai.
+
 ## Trạng thái
 
 | Phase | Nội dung | Trạng thái |

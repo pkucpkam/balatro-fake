@@ -7,8 +7,9 @@ import { getHandValues } from "@/engine/poker/HandLevels";
 import { HAND_BASE, POKER_HANDS } from "@/engine/poker/HandRank";
 import { BOSS_REGISTRY } from "@/content/blinds/bosses";
 import { useGameStore } from "./gameStore";
+import { useAccountLabel } from "../account/AccountModal";
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -117,7 +118,8 @@ export function DeckModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function OptionsModal({ onClose }: { onClose: () => void }) {
+export function OptionsModal({ onClose, onAccount }: { onClose: () => void; onAccount: () => void }) {
+  const accountLabel = useAccountLabel();
   const settings = useGameStore((s) => s.settings);
   const setSettings = useGameStore((s) => s.setSettings);
   const abandon = useGameStore((s) => s.abandonRun);
@@ -143,6 +145,14 @@ export function OptionsModal({ onClose }: { onClose: () => void }) {
           <span>CRT filter</span>
           <input type="checkbox" checked={settings.crt} onChange={(e) => setSettings({ crt: e.target.checked })} />
         </label>
+        {accountLabel && (
+          <div className="option">
+            <span>Cloud save</span>
+            <button type="button" className="btn btn-ghost" onClick={onAccount}>
+              {accountLabel}
+            </button>
+          </div>
+        )}
         {status !== "MENU" && (
           <button
             type="button"

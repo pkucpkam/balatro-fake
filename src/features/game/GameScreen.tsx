@@ -15,6 +15,7 @@ import { ActionBar, HandArea } from "./HandArea";
 import { PlayArea } from "./PlayArea";
 import { CashOut } from "./CashOut";
 import { DeckModal, OptionsModal, RunInfoModal } from "./Modals";
+import { AccountModal } from "../account/AccountModal";
 import { useGameStore } from "./gameStore";
 
 function hsl(h: number, s: number, l: number): string {
@@ -104,7 +105,7 @@ export function GameScreen() {
   const shake = useGameStore((s) => s.shake);
   const settings = useGameStore((s) => s.settings);
   const error = useGameStore((s) => s.error);
-  const [modal, setModal] = useState<null | "info" | "deck" | "options">(null);
+  const [modal, setModal] = useState<null | "info" | "deck" | "options" | "account">(null);
   const [scope, animate] = useAnimate<HTMLDivElement>();
 
   useEffect(() => {
@@ -131,7 +132,7 @@ export function GameScreen() {
       <ShaderBackground palette={palette} intensity={intensity} />
       <div className="stage" ref={scope}>
         {view.status === "MENU" ? (
-          <MainMenu onOptions={() => setModal("options")} />
+          <MainMenu onOptions={() => setModal("options")} onAccount={() => setModal("account")} />
         ) : (
           <div className="layout">
             <Hud onRunInfo={() => setModal("info")} onOptions={() => setModal("options")} />
@@ -176,7 +177,8 @@ export function GameScreen() {
       <AnimatePresence>
         {modal === "info" && <RunInfoModal key="i" onClose={() => setModal(null)} />}
         {modal === "deck" && <DeckModal key="d" onClose={() => setModal(null)} />}
-        {modal === "options" && <OptionsModal key="o" onClose={() => setModal(null)} />}
+        {modal === "options" && <OptionsModal key="o" onClose={() => setModal(null)} onAccount={() => setModal("account")} />}
+        {modal === "account" && <AccountModal key="a" onClose={() => setModal(null)} />}
       </AnimatePresence>
       <AnimatePresence>
         {error && (

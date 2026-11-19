@@ -10,6 +10,17 @@ import { HAND_BASE } from "@/engine/poker/HandRank";
 import { sfx, setMuted, setVolume } from "@/ui/audio/sfx";
 import { celebrate } from "@/ui/fx/confetti";
 import { sleep } from "@/ui/format";
+import { cloudConfigured } from "@/services/firebase";
+import * as cloud from "@/services/cloud";
+import {
+  SAVE_VERSION,
+  applyRunToStats,
+  parseRunSave,
+  pickNewerSave,
+  summarizeRun,
+  type PlayerStats,
+  type RunSave,
+} from "@/services/saveFormat";
 
 /**
  * Application layer: React <-> Engine bridge.
@@ -53,6 +64,18 @@ export interface Settings {
   crt: boolean;
 }
 
+export interface CloudState {
+  /**
+   * off = no Firebase config · signedOut = local-only · connecting = loading profile
+   * ready = synced · error = profile could not be loaded (still playable locally)
+   */
+  status: "off" | "signedOut" | "connecting" | "ready" | "error";
+  account: cloud.CloudAccount | null;
+  /** Totals across all finished runs (null until loaded from the server). */
+  stats: PlayerStats | null;
+  message: string | null;
+}
+
 interface GameStore {
   game: GameState;
   view: GameState;
@@ -67,6 +90,7 @@ interface GameStore {
   error: string | null;
   settings: Settings;
   hasSave: boolean;
+  cloud: CloudState;
 
   dispatch: (action: GameAction) => void;
   toggleCard: (cardId: string) => void;
@@ -78,10 +102,18 @@ interface GameStore {
   abandonRun: () => void;
   popup: (target: string, text: string, kind: PopupKind) => void;
   exportReplay: () => string;
+  /** Auth actions resolve to an error message, or null on success. */
+  signInGoogle: () => Promise<string | null>;
+  signInEmail: (email: string, password: string) => Promise<string | null>;
+  signUpEmail: (email: string, password: string, displayName: string) => Promise<string | null>;
+  resetPassword: (email: string) => Promise<string | null>;
+  signOutCloud: () => Promise<void>;
 }
 
-const SAVE_KEY = "balatro-fake/save-v2";
+const SAVE_KEY = "balatro-fake/save-v3";
+const LEGACY_SAVE_KEY = "balatro-fake/save-v2";
 const SETTINGS_KEY = "balatro-fake/settings";
+const CLOUD_SYNC_DELAY_MS = 2500;
 
 function loadSettings(): Settings {
   try {
@@ -93,25 +125,70 @@ function loadSettings(): Settings {
   return { speed: 1, muted: false, crt: true };
 }
 
-function readSave(): GameAction[] | null {
+function readSave(): RunSave | null {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? (JSON.parse(raw) as GameAction[]) : null;
+    const raw = localStorage.getItem(SAVE_KEY) ?? localStorage.getItem(LEGACY_SAVE_KEY);
+    return raw ? parseRunSave(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
-function writeSave(state: GameState, log: readonly GameAction[]) {
+function storeLocalSave(save: RunSave | null) {
   try {
-    if (state.status === "GAME_OVER" || state.status === "VICTORY" || state.status === "MENU") {
-      localStorage.removeItem(SAVE_KEY);
-    } else {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(log));
-    }
+    localStorage.removeItem(LEGACY_SAVE_KEY);
+    if (save) localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    else localStorage.removeItem(SAVE_KEY);
   } catch {
     /* storage full / disabled: the run still works */
   }
+}
+
+const isRunOver = (s: GameState) => s.status === "GAME_OVER" || s.status === "VICTORY" || s.status === "MENU";
+
+/** Saves locally right away; returns the save (null = no resumable run). */
+function writeSave(state: GameState, log: readonly GameAction[]): RunSave | null {
+  const first = log[0];
+  const save =
+    isRunOver(state) || first?.type !== "START_RUN"
+      ? null
+      : { version: SAVE_VERSION, seed: first.seed, actions: [...log], updatedAt: Date.now() };
+  storeLocalSave(save);
+  return save;
+}
+
+/* --- Cloud sync ------------------------------------------------------------
+ * Local storage stays the source of truth while playing; the active run is
+ * pushed to Firestore a few seconds after the last action (and right away when
+ * the tab is hidden). Firestore's offline cache queues writes made offline.
+ */
+let cloudUid: string | null = null;
+let pendingRun: RunSave | null | undefined; // undefined = nothing to push
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+
+function flushRunSync() {
+  clearTimeout(syncTimer);
+  syncTimer = undefined;
+  if (!cloudUid || pendingRun === undefined) return;
+  const run = pendingRun;
+  pendingRun = undefined;
+  const uid = cloudUid;
+  const p = run ? cloud.saveActiveRun(uid, run) : cloud.clearActiveRun(uid);
+  p.catch((err) => console.warn("[cloud] run sync failed", err));
+}
+
+function queueRunSync(run: RunSave | null, immediate = false) {
+  if (!cloudConfigured) return;
+  pendingRun = run;
+  clearTimeout(syncTimer);
+  if (immediate) flushRunSync();
+  else syncTimer = setTimeout(flushRunSync, CLOUD_SYNC_DELAY_MS);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushRunSync();
+  });
 }
 
 let engine = new GameEngine();
@@ -288,6 +365,28 @@ export const useGameStore = create<GameStore>((set, get) => {
     react(events.filter((e) => e.type !== "SCORE_STEP"));
   };
 
+  const authAction = async (fn: () => Promise<unknown>): Promise<string | null> => {
+    try {
+      await fn();
+      return null;
+    } catch (err) {
+      return cloud.describeCloudError(err);
+    }
+  };
+
+  /** Finished run: history entry + totals in the cloud, no more active run. */
+  const recordRunEnd = (final: GameState, log: readonly GameAction[]) => {
+    clearTimeout(syncTimer);
+    pendingRun = undefined;
+    const summary = summarizeRun(final, log.length, Date.now());
+    const { cloud: c } = get();
+    if (c.stats) set({ cloud: { ...c, stats: applyRunToStats(c.stats, summary) } });
+    if (!cloudUid) return;
+    cloud.recordFinishedRun(cloudUid, summary, [...log], c.status === "ready" ? c.stats : null).catch((err) => {
+      console.warn("[cloud] could not record run", err);
+    });
+  };
+
   return {
     game: engine.state,
     view: engine.state,
@@ -302,6 +401,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     error: null,
     settings: initialSettings,
     hasSave: readSave() !== null,
+    cloud: { status: cloudConfigured ? "signedOut" : "off", account: null, stats: null, message: null },
 
     dispatch: (action) => {
       if (get().busy) return;
@@ -319,7 +419,11 @@ export const useGameStore = create<GameStore>((set, get) => {
         throw err;
       }
       const final = engine.state;
-      writeSave(final, engine.actionLog);
+      const save = writeSave(final, engine.actionLog);
+      const runEnded = !isRunOver(prev) && isRunOver(final) && action.type !== "START_RUN";
+      if (runEnded && final.status !== "MENU") recordRunEnd(final, engine.actionLog);
+      else if (save) queueRunSync(save, action.type === "START_RUN" || action.type === "CASH_OUT");
+      else queueRunSync(null, true);
       const keepSelection = action.type === "SORT_HAND" || action.type === "REORDER_HAND" || action.type === "SELL_JOKER" || action.type === "MOVE_JOKER";
       set((s) => ({
         game: final,
@@ -377,10 +481,10 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     continueRun: () => {
-      const log = readSave();
-      if (!log) return;
+      const save = readSave();
+      if (!save) return;
       try {
-        engine = GameEngine.replay(log);
+        engine = GameEngine.replay(save.actions);
         set({ game: engine.state, view: engine.state, seq: null, busy: false, selectedCardIds: [] });
       } catch {
         localStorage.removeItem(SAVE_KEY);
@@ -395,10 +499,83 @@ export const useGameStore = create<GameStore>((set, get) => {
       } catch {
         /* ignore */
       }
+      queueRunSync(null, true);
       set({ game: engine.state, view: engine.state, seq: null, busy: false, hasSave: false, selectedCardIds: [] });
     },
 
     popup,
     exportReplay: () => JSON.stringify(engine.actionLog),
+
+    signInGoogle: () => authAction(() => cloud.signInGoogle()),
+    signInEmail: (email, password) => authAction(() => cloud.signInEmail(email, password)),
+    signUpEmail: (email, password, displayName) =>
+      authAction(async () => {
+        const account = await cloud.signUpEmail(email, password, displayName);
+        // onAuthStateChanged fired before updateProfile; refresh the shown name.
+        set((s) => ({ cloud: { ...s.cloud, account } }));
+      }),
+    resetPassword: (email) => authAction(() => cloud.resetPassword(email)),
+    signOutCloud: async () => {
+      flushRunSync();
+      await cloud.signOutCloud();
+    },
   };
+});
+
+/* --- Account lifecycle --------------------------------------------------- */
+
+async function onSignedIn(account: cloud.CloudAccount) {
+  const store = useGameStore;
+  store.setState((s) => ({ cloud: { ...s.cloud, status: "connecting", account, message: null } }));
+  try {
+    const profile = await cloud.loadProfile(account);
+    if (cloudUid !== account.uid) return; // signed out / switched meanwhile
+
+    if (profile.settings) {
+      const settings = { ...store.getState().settings, ...profile.settings };
+      setMuted(settings.muted);
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      } catch {
+        /* ignore */
+      }
+      store.setState({ settings });
+    } else {
+      void cloud.saveSettings(account.uid, store.getState().settings);
+    }
+
+    // Resume whichever run is newer. Only swap saves while on the menu: a run
+    // being played right now always wins and is pushed up.
+    const local = readSave();
+    const inRun = store.getState().game.status !== "MENU";
+    const choice = inRun ? "local" : pickNewerSave(local, profile.activeRun);
+    if (choice === "cloud" && profile.activeRun) {
+      storeLocalSave(profile.activeRun);
+      store.setState({ hasSave: true });
+    } else if (choice === "local" && local) {
+      queueRunSync(local, true);
+    }
+
+    store.setState((s) => ({ cloud: { ...s.cloud, status: "ready", stats: profile.stats } }));
+  } catch (err) {
+    console.warn("[cloud] profile load failed", err);
+    if (cloudUid !== account.uid) return;
+    store.setState((s) => ({ cloud: { ...s.cloud, status: "error", message: cloud.describeCloudError(err) } }));
+  }
+}
+
+cloud.watchAccount((account) => {
+  if (account?.uid === cloudUid) return;
+  flushRunSync();
+  cloudUid = account?.uid ?? null;
+  if (account) void onSignedIn(account);
+  else useGameStore.setState({ cloud: { status: "signedOut", account: null, stats: null, message: null } });
+});
+
+let settingsTimer: ReturnType<typeof setTimeout> | undefined;
+useGameStore.subscribe((s, prev) => {
+  if (s.settings === prev.settings || !cloudUid || s.cloud.status !== "ready") return;
+  clearTimeout(settingsTimer);
+  const uid = cloudUid;
+  settingsTimer = setTimeout(() => void cloud.saveSettings(uid, useGameStore.getState().settings).catch(() => {}), 1000);
 });

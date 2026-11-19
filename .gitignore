@@ -3,3 +3,7 @@ dist
 coverage
 *.tsbuildinfo
 .DS_Store
+.env.local
+.env.*.local
+.firebase
+*-debug.log

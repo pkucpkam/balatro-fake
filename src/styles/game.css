@@ -440,3 +440,21 @@ button:disabled { cursor: not-allowed; }
   .float, .title-letter, .flames, .ed-polychrome .edition-sheen { animation: none; }
   .card, .joker, .consumable { transition: none; }
 }
+
+/* --- Account ---------------------------------------------------------------- */
+.account { display: flex; flex-direction: column; gap: 0.8rem; }
+.account .modal-note { margin: 0; }
+.account-tabs { display: flex; gap: 0.4rem; }
+.account-tabs .btn { flex: 1; }
+.account-form { display: flex; flex-direction: column; gap: 0.6rem; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field input { padding: 0.55rem 0.7rem; border: 0; border-radius: 6px; background: rgb(0 0 0 / 0.35); color: var(--text); font: inherit; box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.12); }
+.field input:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--brass); }
+.account-msg { margin: 0; font-family: var(--font-small); font-size: 1.15rem; color: var(--teal); }
+.account-msg.error { color: var(--mult); }
+.account-sync { margin: 0; font-family: var(--font-small); font-size: 1.15rem; color: var(--muted); }
+.account-sync.ready { color: var(--teal); }
+.account-sync.error { color: var(--mult); }
+.account-or { text-align: center; color: var(--muted); font-family: var(--font-small); font-size: 1.1rem; }
+.btn-link { align-self: center; border: 0; background: none; padding: 0.2rem; color: var(--muted); font: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; }
+.btn-link:hover { color: var(--text); }

@@ -1,0 +1,58 @@
+rules_version = '2';
+
+// Players can only read/write their own data. Stats are written by the client
+// (Spark plan: no Cloud Functions), so they are shape-checked but not
+// cheat-proof — do not build a public leaderboard on them.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function validStats(s) {
+      return s is map
+        && s.keys().hasOnly(['runsPlayed', 'runsWon', 'handsPlayed', 'bestHandScore', 'highestAnte'])
+        && (!('runsPlayed' in s) || (s.runsPlayed is int && s.runsPlayed >= 0))
+        && (!('runsWon' in s) || (s.runsWon is int && s.runsWon >= 0))
+        && (!('handsPlayed' in s) || (s.handsPlayed is int && s.handsPlayed >= 0))
+        && (!('bestHandScore' in s) || (s.bestHandScore is number && s.bestHandScore >= 0))
+        && (!('highestAnte' in s) || (s.highestAnte is int && s.highestAnte >= 0));
+    }
+
+    function validProfile(d) {
+      return d.keys().hasOnly(['displayName', 'createdAt', 'lastSeenAt', 'settings', 'stats'])
+        && (!('displayName' in d) || d.displayName == null || (d.displayName is string && d.displayName.size() <= 64))
+        && (!('settings' in d) || (d.settings is map && d.settings.size() <= 10))
+        && (!('stats' in d) || validStats(d.stats));
+    }
+
+    function validRunSave(d) {
+      return d.keys().hasOnly(['version', 'seed', 'actions', 'updatedAt'])
+        && d.version is int
+        && d.seed is string && d.seed.size() <= 32
+        && d.actions is list && d.actions.size() <= 20000
+        && d.updatedAt is int;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn(uid);
+      allow create, update: if signedIn(uid) && validProfile(request.resource.data);
+      allow delete: if false;
+
+      match /meta/activeRun {
+        allow read, delete: if signedIn(uid);
+        allow create, update: if signedIn(uid) && validRunSave(request.resource.data);
+      }
+
+      // Finished runs are append-only history.
+      match /runs/{runId} {
+        allow read: if signedIn(uid);
+        allow create: if signedIn(uid)
+          && request.resource.data.result in ['WIN', 'LOSE']
+          && request.resource.data.actions is list
+          && request.resource.data.actions.size() <= 20000;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
