@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from "motion/react";
+import { useShallow } from "zustand/react/shallow";
 import { useGameStore } from "@/features/game/gameStore";
 
 /** Floating "+30" / "X2 Mult" texts anchored to a card, joker or HUD box. */
 export function Popups({ target, placement = "top" }: { target: string; placement?: "top" | "bottom" }) {
-  const popups = useGameStore((s) => s.popups.filter((p) => p.target === target));
+  const popups = useGameStore(useShallow((s) => s.popups.filter((p) => p.target === target)));
   return (
     <div className={`popup-anchor ${placement}`} aria-live="polite">
       <AnimatePresence>

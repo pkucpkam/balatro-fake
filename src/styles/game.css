@@ -99,7 +99,7 @@ button:disabled { cursor: not-allowed; }
 /* --- Layout --------------------------------------------------------------- */
 .layout { display: grid; grid-template-columns: clamp(220px, 19vw, 290px) 1fr; gap: 1.2rem; height: 100%; padding: 1rem 1.2rem; }
 .board { position: relative; display: grid; grid-template-rows: auto 1fr; gap: 1rem; min-height: 0; }
-.top-row { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: start; }
+.top-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: start; }
 .center { position: relative; min-height: 0; }
 .center-fill { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .play-col { justify-content: flex-end; gap: 0.6rem; padding-bottom: 0.4rem; }
@@ -169,6 +169,7 @@ button:disabled { cursor: not-allowed; }
 .joker-tray { min-width: 0; }
 .tray-cards { display: flex; gap: 0.5rem; list-style: none; margin: 0; padding: 0; min-height: var(--jh); align-items: flex-start; flex-wrap: nowrap; }
 .tray-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; touch-action: none; }
+.consumable-tray { min-width: calc(var(--jw) * 2 + 1.9rem); }
 .tray-count { position: absolute; bottom: 0.2rem; left: 0.7rem; font-family: var(--font-small); font-size: 1rem; color: var(--muted); }
 .consumable-actions { display: flex; gap: 0.25rem; }
 
@@ -214,6 +215,8 @@ button:disabled { cursor: not-allowed; }
 .corner.tl { top: 6%; left: 7%; }
 .corner.br { bottom: 6%; right: 7%; transform: rotate(180deg); }
 .pips { position: absolute; inset: 10% 18%; }
+/* Pixelify Sans draws ♣ almost like ♠ at small sizes: use a symbol font for suit glyphs. */
+.corner i, .pip, .ace, .portrait-suit, .deck-suit { font-family: "Segoe UI Symbol", "Apple Symbols", "DejaVu Sans", serif; font-style: normal; }
 .pip { position: absolute; transform: translate(-50%, -50%); font-size: calc(var(--cw) * 0.2); line-height: 1; }
 .pip.flip { transform: translate(-50%, -50%) rotate(180deg); }
 .ace { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cw) * 0.62); }
@@ -303,7 +306,7 @@ button:disabled { cursor: not-allowed; }
 }
 .total-burst.hot { color: #fff3c4; text-shadow: 0 4px 0 #b3401a, 0 0 30px #ff7b1a; }
 
-.hand { display: flex; justify-content: center; list-style: none; margin: 0; padding: 2rem 0 0; min-height: calc(var(--ch) + 2.2rem); }
+.hand { display: flex; justify-content: center; list-style: none; margin: 0; padding: 1.2rem 0 1.6rem; min-height: calc(var(--ch) + 2.8rem); }
 .hand-slot { position: relative; margin: 0 calc(var(--cw) * -0.04); touch-action: none; }
 .fan { transform-origin: 50% 120%; }
 .float { animation: idle 3.2s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -0.4s); }

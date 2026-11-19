@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { motion } from "motion/react";
+import { useEffect } from "react";
 import { SUITS, RANKS, suitSymbol, isRed } from "@/engine/cards/Card";
 import { allCards } from "@/engine/deck/Deck";
 import { getHandValues } from "@/engine/poker/HandLevels";
@@ -8,6 +9,14 @@ import { BOSS_REGISTRY } from "@/content/blinds/bosses";
 import { useGameStore } from "./gameStore";
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div

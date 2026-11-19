@@ -35,11 +35,15 @@ const PALETTE_WIN: ShaderPalette = { a: "#2a1a05", b: "#5c3b0a", c: "#e9b949" };
 
 function DeckPile({ onOpen }: { onOpen: () => void }) {
   const view = useGameStore((s) => s.view);
+  // During a scoring sequence `view` hides the played cards, so take the total from engine truth.
+  const total = useGameStore((s) => allCards(s.game.deck).length);
+  // Between rounds every card is shuffled back in on the next SELECT_BLIND.
+  const inRound = view.status === "PLAYING" || view.status === "GAME_OVER";
   return (
     <button type="button" className="deck-pile" onClick={onOpen} aria-label="View deck">
       <CardBack />
       <span className="deck-pile-count">
-        {view.deck.drawPile.length}/{allCards(view.deck).length}
+        {inRound ? view.deck.drawPile.length : total}/{total}
       </span>
     </button>
   );
